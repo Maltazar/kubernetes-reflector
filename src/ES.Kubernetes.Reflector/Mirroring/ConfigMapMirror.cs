@@ -41,7 +41,7 @@ public class ConfigMapMirror(ILogger<ConfigMapMirror> logger, IKubernetes kubern
             ApiVersion = sourceResource.ApiVersion,
             Kind = sourceResource.Kind,
             Data = sourceResource.Data,
-            BinaryData = sourceResource.BinaryData
+            BinaryData = sourceResource.BinaryData,
 
             // Preserve labels from the source so tools that rely on labels can discover mirrored secrets
             Metadata = new k8s.Models.V1ObjectMeta
