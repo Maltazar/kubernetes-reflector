@@ -25,6 +25,8 @@ public class ConfigMapMirror(ILogger<ConfigMapMirror> logger, IKubernetes kubern
     {
         patchDoc.Replace(e => e.Data, source.Data);
         patchDoc.Replace(e => e.BinaryData, source.BinaryData);
+        // Ensure any labels on the source secret are reflected as well
+        patchDoc.Replace(e => e.Metadata.Labels, source.Metadata?.Labels ?? new Dictionary<string, string>());
         return Task.CompletedTask;
     }
 
@@ -40,6 +42,14 @@ public class ConfigMapMirror(ILogger<ConfigMapMirror> logger, IKubernetes kubern
             Kind = sourceResource.Kind,
             Data = sourceResource.Data,
             BinaryData = sourceResource.BinaryData
+
+            // Preserve labels from the source so tools that rely on labels can discover mirrored secrets
+            Metadata = new k8s.Models.V1ObjectMeta
+            {
+                Labels = sourceResource.Metadata?.Labels is null
+                    ? null
+                    : new Dictionary<string, string>(sourceResource.Metadata.Labels)
+            }
         });
 
     protected override async Task OnResourceDelete(NamespacedName resourceId)
