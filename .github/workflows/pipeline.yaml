@@ -312,10 +312,11 @@ jobs:
           files: |
             .artifacts/kubectl/${{ env.helm_chart }}.yaml
 
-      - name: github - repository-dispatch - release
-        uses: peter-evans/repository-dispatch@v4
-        with:
-          token: ${{ secrets.ES_GITHUB_PAT }}
-          repository: maltazar/helm-charts
-          event-type: release
-          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
+      # Disabled: Only needed if you have a separate helm-charts repository
+      # - name: github - repository-dispatch - release
+      #   uses: peter-evans/repository-dispatch@v4
+      #   with:
+      #     token: ${{ secrets.ES_GITHUB_PAT }}
+      #     repository: maltazar/helm-charts
+      #     event-type: release
+      #     client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
