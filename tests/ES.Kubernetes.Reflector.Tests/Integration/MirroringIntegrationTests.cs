@@ -245,9 +245,151 @@ public class MirroringIntegrationTests(
     }
 
 
+    [Fact]
+    public async Task AutoReflect_CopiesLabels_WhenLabelFilterSet()
+    {
+        var client = await GetKubernetesClient();
+
+        var targetNamespace = $"label-filter-{Guid.CreateVersion7()}";
+        await CreateNamespaceAsync(targetNamespace);
+
+        var sourceLabels = new Dictionary<string, string>
+        {
+            ["my-app-name"] = "api",
+            ["my-app-tier"] = "backend",
+            ["unrelated-label"] = "should-not-copy"
+        };
+
+        var sourceResource = await CreateResource(client,
+            annotations: new ReflectorAnnotationsBuilder()
+                .WithReflectionAllowed(true)
+                .WithAllowedNamespaces($"^{targetNamespace}$")
+                .WithAutoEnabled(true)
+                .WithLabelFilter("my-app-.*")
+                .Build(),
+            labels: sourceLabels);
+
+        Assert.True(await WaitForResource(client, sourceResource.Name(), targetNamespace,
+            TestContext.Current.CancellationToken));
+
+        var reflection = await client.CoreV1.ReadNamespacedSecretAsync(
+            sourceResource.Name(), targetNamespace,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(reflection.Metadata.Labels);
+        Assert.Equal("api", reflection.Metadata.Labels["my-app-name"]);
+        Assert.Equal("backend", reflection.Metadata.Labels["my-app-tier"]);
+        Assert.False(reflection.Metadata.Labels.ContainsKey("unrelated-label"));
+    }
+
+
+    [Fact]
+    public async Task AutoReflect_DoesNotCopyLabels_WhenNoLabelFilter()
+    {
+        var client = await GetKubernetesClient();
+
+        var targetNamespace = $"no-label-filter-{Guid.CreateVersion7()}";
+        await CreateNamespaceAsync(targetNamespace);
+
+        var sourceLabels = new Dictionary<string, string>
+        {
+            ["my-app"] = "web"
+        };
+
+        var sourceResource = await CreateResource(client,
+            annotations: new ReflectorAnnotationsBuilder()
+                .WithReflectionAllowed(true)
+                .WithAllowedNamespaces($"^{targetNamespace}$")
+                .WithAutoEnabled(true)
+                .Build(),
+            labels: sourceLabels);
+
+        Assert.True(await WaitForResource(client, sourceResource.Name(), targetNamespace,
+            TestContext.Current.CancellationToken));
+
+        var reflection = await client.CoreV1.ReadNamespacedSecretAsync(
+            sourceResource.Name(), targetNamespace,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // No label filter set — labels should not be copied
+        var hasSourceLabels = reflection.Metadata.Labels?.ContainsKey("my-app") ?? false;
+        Assert.False(hasSourceLabels);
+    }
+
+
+    [Fact]
+    public async Task AutoReflect_CopiesAnnotations_WhenAnnotationFilterSet()
+    {
+        var client = await GetKubernetesClient();
+
+        var targetNamespace = $"annot-filter-{Guid.CreateVersion7()}";
+        await CreateNamespaceAsync(targetNamespace);
+
+        var sourceAnnotations = new ReflectorAnnotationsBuilder()
+            .WithReflectionAllowed(true)
+            .WithAllowedNamespaces($"^{targetNamespace}$")
+            .WithAutoEnabled(true)
+            .WithAnnotationFilter(@"my-org\.io/.*")
+            .Build();
+        // Add custom annotations that should be reflected
+        sourceAnnotations["my-org.io/team"] = "platform";
+        sourceAnnotations["my-org.io/cost-center"] = "eng";
+        // Add an excluded annotation
+        sourceAnnotations["kubectl.kubernetes.io/last-applied-configuration"] = "{should-not-copy}";
+
+        var sourceResource = await CreateResource(client, annotations: sourceAnnotations);
+
+        Assert.True(await WaitForResource(client, sourceResource.Name(), targetNamespace,
+            TestContext.Current.CancellationToken));
+
+        var reflection = await client.CoreV1.ReadNamespacedSecretAsync(
+            sourceResource.Name(), targetNamespace,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(reflection.Metadata.Annotations);
+        Assert.Equal("platform", reflection.Metadata.Annotations["my-org.io/team"]);
+        Assert.Equal("eng", reflection.Metadata.Annotations["my-org.io/cost-center"]);
+        Assert.False(reflection.Metadata.Annotations.ContainsKey(
+            "kubectl.kubernetes.io/last-applied-configuration"));
+        // Reflector's own annotations should not be copied via the filter
+        Assert.False(reflection.Metadata.Annotations.ContainsKey(
+            ES.Kubernetes.Reflector.Mirroring.Core.Annotations.Reflection.Allowed));
+    }
+
+
+    [Fact]
+    public async Task AutoReflect_DoesNotCopyAnnotations_WhenNoAnnotationFilter()
+    {
+        var client = await GetKubernetesClient();
+
+        var targetNamespace = $"no-annot-filter-{Guid.CreateVersion7()}";
+        await CreateNamespaceAsync(targetNamespace);
+
+        var sourceAnnotations = new ReflectorAnnotationsBuilder()
+            .WithReflectionAllowed(true)
+            .WithAllowedNamespaces($"^{targetNamespace}$")
+            .WithAutoEnabled(true)
+            .Build();
+        sourceAnnotations["my-org.io/team"] = "platform";
+
+        var sourceResource = await CreateResource(client, annotations: sourceAnnotations);
+
+        Assert.True(await WaitForResource(client, sourceResource.Name(), targetNamespace,
+            TestContext.Current.CancellationToken));
+
+        var reflection = await client.CoreV1.ReadNamespacedSecretAsync(
+            sourceResource.Name(), targetNamespace,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // No annotation filter set — user annotations should not be copied
+        Assert.False(reflection.Metadata.Annotations?.ContainsKey("my-org.io/team") ?? false);
+    }
+
+
     private async Task<V1Secret> CreateResource(IKubernetes client,
         string? name = null, string? namespaceName = null,
         Dictionary<string, string>? annotations = null,
+        Dictionary<string, string>? labels = null,
         Dictionary<string, string>? data = null)
     {
         var sourceResource = new V1Secret
@@ -258,7 +400,8 @@ public class MirroringIntegrationTests(
             {
                 Name = name ?? Guid.CreateVersion7().ToString(),
                 NamespaceProperty = namespaceName ?? Guid.CreateVersion7().ToString(),
-                Annotations = annotations ?? new ReflectorAnnotationsBuilder().Build()
+                Annotations = annotations ?? new ReflectorAnnotationsBuilder().Build(),
+                Labels = labels
             },
             StringData = data ?? new Dictionary<string, string>
             {

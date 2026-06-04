@@ -42,6 +42,18 @@ public sealed class ReflectorAnnotationsBuilder
         return this;
     }
 
+    public ReflectorAnnotationsBuilder WithLabelFilter(string filter)
+    {
+        _annotations[Annotations.Reflection.LabelFilter] = filter;
+        return this;
+    }
+
+    public ReflectorAnnotationsBuilder WithAnnotationFilter(string filter)
+    {
+        _annotations[Annotations.Reflection.AnnotationFilter] = filter;
+        return this;
+    }
+
     public Dictionary<string, string> Build()
     {
         if (_annotations.Count != 0) return _annotations;
