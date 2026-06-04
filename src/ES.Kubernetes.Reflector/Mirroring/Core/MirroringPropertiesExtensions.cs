@@ -64,6 +64,16 @@ public static class MirroringPropertiesExtensions
                 ? autoNamespacesSelector ?? string.Empty
                 : string.Empty,
 
+            LabelFilter = metadata
+                .TryGetAnnotationValue(Annotations.Reflection.LabelFilter, out string? labelFilter)
+                ? labelFilter ?? string.Empty
+                : string.Empty,
+
+            AnnotationFilter = metadata
+                .TryGetAnnotationValue(Annotations.Reflection.AnnotationFilter, out string? annotationFilter)
+                ? annotationFilter ?? string.Empty
+                : string.Empty,
+
             Reflects = metadata
                 .TryGetAnnotationValue(Annotations.Reflection.Reflects, out string? metaReflects)
                 ? NamespacedName.TryParse(metaReflects, out var id) ? id : null

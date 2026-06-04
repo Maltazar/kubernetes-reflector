@@ -11,6 +11,8 @@ public class MirroringProperties
     public bool AutoEnabled { get; set; }
     public string AutoNamespaces { get; set; } = string.Empty;
     public string AutoNamespacesSelector { get; set; } = string.Empty;
+    public string LabelFilter { get; set; } = string.Empty;
+    public string AnnotationFilter { get; set; } = string.Empty;
     public NamespacedName? Reflects { get; set; }
 
     public string ResourceVersion { get; set; } = string.Empty;

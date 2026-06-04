@@ -556,13 +556,27 @@ public abstract class ResourceMirror<TResource>(ILogger logger, IKubernetes kube
 
         try
         {
+            var sourceProperties = source.GetMirroringProperties();
+
             if (reflectionObj is null)
             {
                 var newResource = await OnResourceClone(source);
                 newResource.Metadata ??= new V1ObjectMeta();
                 newResource.Metadata.Name = reflectionNsName.Name;
                 newResource.Metadata.NamespaceProperty = reflectionNsName.Namespace;
-                newResource.Metadata.Annotations ??= new Dictionary<string, string>();
+
+                // Apply label filter from source annotations
+                newResource.Metadata.Labels = MetadataFilter.Filter(
+                    source.Metadata?.Labels,
+                    sourceProperties.LabelFilter);
+
+                // Apply annotation filter from source annotations (with exclusions)
+                var filteredAnnotations = MetadataFilter.Filter(
+                    source.Metadata?.Annotations,
+                    sourceProperties.AnnotationFilter,
+                    Annotations.ExcludedAnnotationPrefixes);
+
+                newResource.Metadata.Annotations = new Dictionary<string, string>(filteredAnnotations);
                 var newResourceAnnotations = newResource.Metadata.Annotations;
                 foreach (var patchAnnotation in patchAnnotations)
                     newResourceAnnotations[patchAnnotation.Key] = patchAnnotation.Value;
@@ -597,16 +611,22 @@ public abstract class ResourceMirror<TResource>(ILogger logger, IKubernetes kube
             var annotations = new Dictionary<string, string>(reflectionObj.Metadata.Annotations);
             foreach (var patchAnnotation in patchAnnotations)
                 annotations[patchAnnotation.Key] = patchAnnotation.Value;
+
+            // Merge filtered source annotations into the reflection
+            var filteredSourceAnnotations = MetadataFilter.Filter(
+                source.Metadata?.Annotations,
+                sourceProperties.AnnotationFilter,
+                Annotations.ExcludedAnnotationPrefixes);
+            foreach (var kv in filteredSourceAnnotations)
+                annotations[kv.Key] = kv.Value;
+
             patchDoc.Replace(e => e.Metadata.Annotations, annotations);
 
-            // Merge labels: preserve any existing labels on the reflection but ensure labels from the source
-            // are present (source labels take precedence).
-            var labels = reflectionObj.Metadata.Labels is null
-                ? new Dictionary<string, string>()
-                : new Dictionary<string, string>(reflectionObj.Metadata.Labels);
-            if (source.Metadata?.Labels is not null)
-                foreach (var kv in source.Metadata.Labels)
-                    labels[kv.Key] = kv.Value;
+            // Merge filtered labels from source into the reflection (source labels take precedence)
+            var labels = MetadataFilter.MergeFiltered(
+                reflectionObj.Metadata.Labels,
+                source.Metadata?.Labels,
+                sourceProperties.LabelFilter);
             patchDoc.Replace(e => e.Metadata.Labels, labels);
 
             await OnResourceConfigurePatch(source, patchDoc);
