@@ -82,6 +82,17 @@ $ kubectl -n kube-system apply -f https://github.com/emberstack/kubernetes-refle
   - Add `reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: "<list>"` to the resource annotations to permit reflection from only the list of comma separated namespaces or regular expressions. Note: If this annotation is omitted or is empty, all namespaces are allowed.
   - Add `reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces-selector: "<selector>"` to the resource annotations to permit reflection only to namespaces matching the given Kubernetes label selector (e.g. `env=production`, `team in (a,b)`). If both this and `reflection-allowed-namespaces` are set, a namespace matches if it satisfies either condition.
 
+  #### Label and annotation reflection:
+  By default, only the resource data is reflected. Labels and annotations from the source can optionally be copied to mirrors using regex filters:
+  - Add `reflector.v1.k8s.emberstack.com/label-filter: "<pattern>"` to copy source labels whose keys match the pattern. Supports comma-separated regex patterns with full-match semantics (e.g. `app\.kubernetes\.io/.*,my-label`). If omitted, no labels are copied.
+  - Add `reflector.v1.k8s.emberstack.com/annotation-filter: "<pattern>"` to copy source annotations whose keys match the pattern. Same syntax as the label filter. If omitted, no user annotations are copied.
+
+  > Note: The annotation filter always excludes internal annotations regardless of the pattern. The following prefixes are excluded:
+  > - `reflector.v1.k8s.emberstack.com/` (reflector's own annotations)
+  > - `kubectl.kubernetes.io/` (e.g. `last-applied-configuration`)
+  > - `deployment.kubernetes.io/` (e.g. `revision`)
+  > - `argocd.argoproj.io/` (e.g. `tracking-id`)
+
   #### Automatic mirror creation:
   Reflector can create mirrors with the same name in other namespaces automatically. The following annotations control if and how the mirrors are created:
   - Add `reflector.v1.k8s.emberstack.com/reflection-auto-enabled: "true"` to the resource annotations to automatically create mirrors in other namespaces. Note: Requires `reflector.v1.k8s.emberstack.com/reflection-allowed` to be `true` since mirrors need to able to reflect the source.
@@ -102,6 +113,8 @@ $ kubectl -n kube-system apply -f https://github.com/emberstack/kubernetes-refle
       reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
       reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: "namespace-1,namespace-2,namespace-[0-9]*"
       reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces-selector: "env=production"
+      reflector.v1.k8s.emberstack.com/label-filter: "app\\.kubernetes\\.io/.*"
+      reflector.v1.k8s.emberstack.com/annotation-filter: "my-org\\.io/.*"
   data:
     ...
   ```
@@ -116,6 +129,8 @@ $ kubectl -n kube-system apply -f https://github.com/emberstack/kubernetes-refle
       reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
       reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: "namespace-1,namespace-2,namespace-[0-9]*"
       reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces-selector: "env=production"
+      reflector.v1.k8s.emberstack.com/label-filter: "app\\.kubernetes\\.io/.*"
+      reflector.v1.k8s.emberstack.com/annotation-filter: "my-org\\.io/.*"
   data:
     ...
   ```
@@ -154,6 +169,9 @@ $ kubectl -n kube-system apply -f https://github.com/emberstack/kubernetes-refle
   Reflector will monitor any changes done to the source objects and copy the following fields:
   - `data` for secrets
   - `data` and `binaryData` for configmaps
+  - `labels` matching the `label-filter` pattern (if set)
+  - `annotations` matching the `annotation-filter` pattern (if set, excluding internal annotations)
+
   Reflector keeps track of what was copied by annotating mirrors with the source object version.
 
  - - - -
@@ -173,6 +191,7 @@ spec:
     annotations:
       reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
       reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: ""
+      reflector.v1.k8s.emberstack.com/label-filter: ".*"  # optional: reflect all labels
   ...
   ```
 
