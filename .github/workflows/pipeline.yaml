@@ -198,19 +198,13 @@ jobs:
 
   release:
     name: release
-    if: ${{ needs.discovery.outputs.release == 'true' && github.ref == 'refs/heads/main' }}
+    if: ${{ needs.discovery.outputs.release == 'true' && needs.discovery.outputs.build_push == 'true' && github.ref == 'refs/heads/main' }}
     needs: [discovery, build]
     runs-on: ubuntu-latest
     env:
       gitVersion_SemVer: ${{ needs.discovery.outputs.gitVersion_SemVer }}
       gitVersion_AssemblySemFileVer: ${{ needs.discovery.outputs.gitVersion_AssemblySemFileVer }}
     steps:
-      - name: tools - oras - install
-        uses: oras-project/setup-oras@v2
-
-      - name: tools - oras - login - ghcr.io
-        run: echo "${{ secrets.ES_GITHUB_PAT }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
-
       - name: tools - docker - login ghcr.io
         uses: docker/login-action@v4
         with:
@@ -235,7 +229,7 @@ jobs:
             --tag ${{ env.container_image_repository_ghcr }}/${{ env.container_image }}:latest \
             --tag ${{ env.container_image_repository_dockerhub }}/${{ env.container_image }}:${{ env.gitVersion_SemVer }} \
             --tag ${{ env.container_image_repository_ghcr }}/${{ env.container_image }}:${{ env.gitVersion_SemVer }} \
-            ${{ env.container_image_repository_ghcr }}/${{ env.container_image }}:${{ env.gitVersion_SemVer }}
+            ${{ env.container_image_repository_dockerhub }}/${{ env.container_image }}:${{ env.gitVersion_SemVer }}
 
       - name: github - release - create
         uses: softprops/action-gh-release@v3
