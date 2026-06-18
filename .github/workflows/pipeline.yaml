@@ -78,6 +78,7 @@ jobs:
               - '*.sln'
               - '*.slnx'
               - '*.props'
+              - '.github/workflows/**'
               - 'src/**'
             build:
               - '*.sln'
