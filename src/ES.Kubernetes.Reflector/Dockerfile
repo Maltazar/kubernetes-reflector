@@ -9,6 +9,7 @@ COPY . .
 RUN dotnet build "src/ES.Kubernetes.Reflector/ES.Kubernetes.Reflector.csproj" -c $BUILD_CONFIGURATION
 
 FROM build AS publish
+ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "src/ES.Kubernetes.Reflector/ES.Kubernetes.Reflector.csproj" -c $BUILD_CONFIGURATION -o /app/publish --no-build /p:UseAppHost=false
 
 FROM base AS final

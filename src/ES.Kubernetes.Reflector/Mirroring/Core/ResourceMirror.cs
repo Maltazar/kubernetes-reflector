@@ -543,12 +543,22 @@ public abstract class ResourceMirror<TResource>(ILogger logger, IKubernetes kube
             source = sourceObj;
         }
 
+        var sourceMetadata = source.Metadata;
+        if (sourceMetadata is null)
+        {
+            Logger.LogWarning("Could not update {reflectionNsName} - Source {sourceNsName} has no metadata.",
+                reflectionNsName, sourceNsName);
+            return;
+        }
+
+        var sourceResourceVersion = sourceMetadata.ResourceVersion ?? string.Empty;
+
 
         var patchAnnotations = new Dictionary<string, string>
         {
             [Annotations.Reflection.MetaAutoReflects] = autoReflection.ToString(),
             [Annotations.Reflection.Reflects] = sourceNsName.ToString(),
-            [Annotations.Reflection.MetaReflectedVersion] = source.Metadata.ResourceVersion,
+            [Annotations.Reflection.MetaReflectedVersion] = sourceResourceVersion,
             [Annotations.Reflection.MetaReflectedAt] =
                 JsonConvert.SerializeObject(DateTimeOffset.UtcNow).Replace("\"", string.Empty)
         };
@@ -582,7 +592,7 @@ public abstract class ResourceMirror<TResource>(ILogger logger, IKubernetes kube
                     newResourceAnnotations[patchAnnotation.Key] = patchAnnotation.Value;
                 newResourceAnnotations[Annotations.Reflection.MetaAutoReflects] = autoReflection.ToString();
                 newResourceAnnotations[Annotations.Reflection.Reflects] = sourceNsName.ToString();
-                newResourceAnnotations[Annotations.Reflection.MetaReflectedVersion] = source.Metadata.ResourceVersion;
+                newResourceAnnotations[Annotations.Reflection.MetaReflectedVersion] = sourceResourceVersion;
                 newResourceAnnotations[Annotations.Reflection.MetaReflectedAt] = DateTimeOffset.UtcNow.ToString("O");
 
                 try
@@ -599,7 +609,7 @@ public abstract class ResourceMirror<TResource>(ILogger logger, IKubernetes kube
                 }
             }
 
-            if (reflectionObj.GetMirroringProperties().ReflectedVersion == source.Metadata.ResourceVersion)
+            if (reflectionObj.GetMirroringProperties().ReflectedVersion == sourceResourceVersion)
             {
                 Logger.LogDebug("Skipping {reflectionNsName} - Source {sourceNsName} matches reflected version",
                     reflectionNsName, sourceNsName);
