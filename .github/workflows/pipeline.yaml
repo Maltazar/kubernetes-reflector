@@ -24,11 +24,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  helm_chart: "reflector"
-  helm_chart_dir: "src/helm/reflector"
-  helm_chart_repository: "ghcr.io/maltazar/helm-charts"
-  helm_chart_repository_protocol: "oci://"
-
   container_image: "kubernetes-reflector"
   container_image_build_context: "."
   container_image_build_platforms: "linux/amd64,linux/arm/v7,linux/arm64"
@@ -132,11 +127,6 @@ jobs:
       - name: checkout
         uses: actions/checkout@v6
 
-      - name: artifacts - prepare directories
-        run: |
-          mkdir -p .artifacts/helm
-          mkdir -p .artifacts/kubectl
-
       - name: tools - dotnet - install
         uses: actions/setup-dotnet@v5
         with:
@@ -159,13 +149,6 @@ jobs:
           path: .artifacts/TestResults/*.trx
           reporter: dotnet-trx
           fail-on-empty: "false"
-
-      - name: tools - helm - install
-        uses: azure/setup-helm@v5
-
-      - name: tools - helm - login - ghcr.io
-        if: ${{ env.build_push == 'true' }}
-        run: echo "${{ secrets.ES_GITHUB_PAT }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: tools - docker - login ghcr.io
         if: ${{ env.build_push == 'true' }}
@@ -192,15 +175,6 @@ jobs:
         with:
           driver: docker-container # REQUIRED for multi-platform builds
 
-      - name: helm - import README
-        run: cp README.md ${{ env.helm_chart_dir }}/README.md
-
-      - name: helm - package chart
-        run: helm package --destination .artifacts/helm --version ${{ env.gitVersion_SemVer }} --app-version ${{ env.gitVersion_SemVer }} ${{ env.helm_chart_dir }}
-
-      - name: helm - template chart
-        run: helm template --namespace kube-system ${{ env.helm_chart }} .artifacts/helm/${{ env.helm_chart }}-${{ env.gitVersion_SemVer }}.tgz > .artifacts/kubectl/${{ env.helm_chart }}.yaml
-
       - name: docker - build and push
         uses: docker/build-push-action@v7
         with:
@@ -221,22 +195,6 @@ jobs:
             ${{ env.container_image_repository_dockerhub }}/${{ env.container_image }}:${{ env.gitVersion_SemVer }}
             ${{ env.container_image_repository_ghcr }}/${{ env.container_image }}:${{ env.gitVersion_SemVer }}
 
-      - name: helm - push
-        if: ${{ env.build_push == 'true' }}
-        run: helm push .artifacts/helm/${{ env.helm_chart }}-${{ env.gitVersion_SemVer }}.tgz ${{ env.helm_chart_repository_protocol }}${{ env.helm_chart_repository }}
-
-      - name: artifacts - helm - upload
-        uses: actions/upload-artifact@v7
-        with:
-          name: artifacts-helm-${{env.gitVersion_SemVer}}
-          path: .artifacts/helm
-
-      - name: artifacts - kubectl - upload
-        uses: actions/upload-artifact@v7
-        with:
-          name: artifacts-kubectl-${{env.gitVersion_SemVer}}
-          path: .artifacts/kubectl
-
   release:
     name: release
     if: ${{ needs.discovery.outputs.release == 'true' && github.ref == 'refs/heads/main' }}
@@ -246,25 +204,6 @@ jobs:
       gitVersion_SemVer: ${{ needs.discovery.outputs.gitVersion_SemVer }}
       gitVersion_AssemblySemFileVer: ${{ needs.discovery.outputs.gitVersion_AssemblySemFileVer }}
     steps:
-
-      - name: artifacts - helm - download
-        uses: actions/download-artifact@v8
-        with:
-          name: artifacts-helm-${{env.gitVersion_SemVer}}
-          path: .artifacts/helm
-
-      - name: artifacts - kubectl - download
-        uses: actions/download-artifact@v8
-        with:
-          name: artifacts-kubectl-${{env.gitVersion_SemVer}}
-          path: .artifacts/kubectl
-
-      - name: tools - helm - install
-        uses: azure/setup-helm@v5
-
-      - name: tools - helm - login - ghcr.io
-        run: echo "${{ secrets.ES_GITHUB_PAT }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-
       - name: tools - oras - install
         uses: oras-project/setup-oras@v2
 
@@ -297,9 +236,6 @@ jobs:
             --tag ${{ env.container_image_repository_ghcr }}/${{ env.container_image }}:${{ env.gitVersion_SemVer }} \
             ${{ env.container_image_repository_ghcr }}/${{ env.container_image }}:${{ env.gitVersion_SemVer }}
 
-      - name: helm - push
-        run: helm push .artifacts/helm/${{ env.helm_chart }}-${{ env.gitVersion_SemVer }}.tgz ${{ env.helm_chart_repository_protocol }}${{ env.helm_chart_repository }}
-
       - name: github - release - create
         uses: softprops/action-gh-release@v3
         with:
@@ -309,8 +245,6 @@ jobs:
           body: The release process is automated.
           generate_release_notes: true
           token: ${{ secrets.ES_GITHUB_PAT }}
-          files: |
-            .artifacts/kubectl/${{ env.helm_chart }}.yaml
 
       # Disabled: Only needed if you have a separate helm-charts repository
       # - name: github - repository-dispatch - release
