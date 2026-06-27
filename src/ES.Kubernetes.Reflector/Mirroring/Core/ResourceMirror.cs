@@ -26,6 +26,13 @@ public abstract class ResourceMirror<TResource>(ILogger logger, IKubernetes kube
     private readonly ConcurrentDictionary<NamespacedName, bool> _notFoundCache = new();
     private readonly ConcurrentDictionary<NamespacedName, MirroringProperties> _propertiesCache = new();
     private readonly ConcurrentDictionary<NamespacedName, string> _lastWarnedSelectorErrors = new();
+
+    // Protects against delete/recreate hot loops when another controller keeps recreating a
+    // resource that reflector keeps deleting (high CPU). See the auto-reflection delete path.
+    private readonly DeleteLoopGuard _deleteLoopGuard = new();
+
+    // Tracks targets we've already warned about being foreign-owned, to avoid log spam.
+    private readonly ConcurrentDictionary<NamespacedName, byte> _foreignReflectionWarned = new();
     protected readonly IKubernetes Kubernetes = kubernetes;
     protected readonly ILogger Logger = logger;
 
@@ -57,6 +64,8 @@ public abstract class ResourceMirror<TResource>(ILogger logger, IKubernetes kube
         _autoReflectionCache.Clear();
         _directReflectionCache.Clear();
         _lastWarnedSelectorErrors.Clear();
+        _deleteLoopGuard.Clear();
+        _foreignReflectionWarned.Clear();
 
         return Task.CompletedTask;
     }
@@ -405,6 +414,29 @@ public abstract class ResourceMirror<TResource>(ILogger logger, IKubernetes kube
                     (_, _) => sourceProperties);
                 if (!CanBeAutoReflectedToNamespaceCached(sourceProperties, objNsName.Namespace))
                 {
+                    // Ownership guard: reflector always names an auto-reflection after its source.
+                    // If the names differ, this object was not created by reflector — another
+                    // controller copied a reflection verbatim (carrying reflector annotations) into
+                    // a namespace reflector does not manage. Deleting it would start a delete/recreate
+                    // hot loop with the owning controller, so refuse to delete what we don't own.
+                    if (objNsName.Name != sourceNsName.Name)
+                    {
+                        WarnOnForeignAutoReflection(objNsName, sourceNsName);
+                        break;
+                    }
+
+                    // Backoff guard: if this target is being recreated faster than we delete it,
+                    // stop deleting to avoid an unbounded hot loop (high CPU).
+                    if (!_deleteLoopGuard.TryBeginDelete(objNsName, DateTimeOffset.UtcNow, out var loopTripped))
+                    {
+                        if (loopTripped)
+                            Logger.LogWarning(
+                                "Suppressing deletion of {reflectionNsName} for {cooldown}: it is being recreated " +
+                                "faster than reflector deletes it. Another controller likely manages it (source {sourceNsName}).",
+                                objNsName, DeleteLoopGuard.DefaultCooldown, sourceNsName);
+                        break;
+                    }
+
                     Logger.LogInformation(
                         "Source {sourceNsName} no longer permits the auto reflection to {reflectionNsName}. Deleting {reflectionNsName}.",
                         sourceNsName, objNsName,
@@ -701,6 +733,17 @@ public abstract class ResourceMirror<TResource>(ILogger logger, IKubernetes kube
         _lastWarnedSelectorErrors[sourceNsName] = signature;
         foreach (var error in errors)
             Logger.LogWarning("Invalid label selector on source {sourceNsName}: {error}", sourceNsName, error);
+    }
+
+    private void WarnOnForeignAutoReflection(NamespacedName reflectionNsName, NamespacedName sourceNsName)
+    {
+        if (!_foreignReflectionWarned.TryAdd(reflectionNsName, 0)) return;
+
+        Logger.LogWarning(
+            "Skipping deletion of {reflectionNsName}: it carries reflector annotations for source {sourceNsName} " +
+            "but is named differently than the source, so it was not created by reflector (another controller " +
+            "likely copied a reflection). Reflector will not delete resources it does not own.",
+            reflectionNsName, sourceNsName);
     }
 
     internal static bool NamespaceLabelsEqual(V1Namespace a, V1Namespace b) =>

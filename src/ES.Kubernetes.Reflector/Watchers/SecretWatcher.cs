@@ -23,7 +23,9 @@ public class SecretWatcher(
 
     protected override Task<bool> OnResourceIgnoreCheck(V1Secret item)
     {
-        //Skip helm version secrets. This can cause a terrible amount of traffic.
+        // Skip Helm release secrets (type "helm.sh/release.v1"). These are created by Helm for
+        // every release/revision of any workload in the cluster, are numerous and large, and
+        // reflector never needs to process them. Watching them causes a terrible amount of traffic.
         var ignore = item.Type.StartsWith("helm.sh");
         return Task.FromResult(ignore);
     }

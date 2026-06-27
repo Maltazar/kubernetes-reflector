@@ -15,59 +15,13 @@ If you need help or found a bug, please feel free to open an Issue on GitHub (ht
 
 ## Deployment
 
-Reflector can be deployed either manually or using Helm (recommended).
+Reflector is deployed by applying the release manifest to your cluster.
 
 ### Prerequisites
 - Kubernetes 1.22+
-- Helm 3.8+ (if deployed using Helm)
 
-#### Deployment using Helm
-
-Use Helm to install the latest released chart:
-```shellsession
-$ helm upgrade --install reflector oci://ghcr.io/emberstack/helm-charts/reflector
-```
-or
-```shellsession
-$ helm repo add emberstack https://emberstack.github.io/helm-charts
-$ helm repo update
-$ helm upgrade --install reflector emberstack/reflector
-```
-
-You can customize the values of the helm deployment by using the following Values:
-
-| Parameter                                | Description                                      | Default                                                                                          |
-| ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `nameOverride`                           | Overrides release name                           | `""`                                                                                             |
-| `namespaceOverride`                      | Overrides namespace                              | `""`                                                                                             |
-| `fullnameOverride`                       | Overrides release fullname                       | `""`                                                                                             |
-| `image.repository`                       | Container image repository                       | `emberstack/kubernetes-reflector` (also available: `ghcr.io/emberstack/kubernetes-reflector`)    |
-| `image.tag`                              | Container image tag                              | `Same as chart version`                                                                          |
-| `image.pullPolicy`                       | Container image pull policy                      | `IfNotPresent`                                                                                   |
-| `configuration.logging.minimumLevel`     | Logging minimum level                            | `Information`                                                                                    |
-| `configuration.watcher.timeout`            | Maximum watcher lifetime in seconds                                                                                                                                                      | ``                                                                                               |
-| `configuration.watcher.excludedNamespaces` | Comma-separated list of namespace glob patterns to exclude from reflection processing. Supports `*` (any characters) and `?` (single character). Example: `"ephie-*,kube-system,*-temp"` | ``                                                                                               |
-| `configuration.kubernetes.skipTlsVerify`   | Skip TLS verify when connecting the the cluster                                                                                                                                          | `false`                                                                                          |
-| `rbac.enabled`                           | Create and use RBAC resources                    | `true`                                                                                           |
-| `serviceAccount.create`                  | Create ServiceAccount                            | `true`                                                                                           |
-| `serviceAccount.name`                    | ServiceAccount name                              | _release name_                                                                                   |
-| `livenessProbe.initialDelaySeconds`      | `livenessProbe` initial delay                    | `5`                                                                                              |
-| `livenessProbe.periodSeconds`            | `livenessProbe` period                           | `10`                                                                                             |
-| `readinessProbe.initialDelaySeconds`     | `readinessProbe` initial delay                   | `5`                                                                                              |
-| `readinessProbe.periodSeconds`           | `readinessProbe` period                          | `10`                                                                                             |
-| `startupProbe.failureThreshold`          | `startupProbe` failure threshold                 | `10`                                                                                             |
-| `startupProbe.periodSeconds`             | `startupProbe` period                            | `5`                                                                                              |
-| `resources`                              | Resource limits                                  | `{}`                                                                                             |
-| `nodeSelector`                           | Node labels for pod assignment                   | `{}`                                                                                             |
-| `tolerations`                            | Toleration labels for pod assignment             | `[]`                                                                                             |
-| `affinity`                               | Node affinity for pod assignment                 | `{}`                                                                                             |
-| `priorityClassName`                      | `priorityClassName` for pods                     | `""`                                                                                             |
-                                         
-> Find us on [Artifact Hub](https://artifacthub.io/packages/search?org=emberstack)
-
-
-#### Manual deployment
-Each release (found on the [Releases](https://github.com/emberstack/kubernetes-reflector/releases) GitHub page) contains the manual deployment file (`reflector.yaml`).
+### Deployment
+Each release (found on the [Releases](https://github.com/emberstack/kubernetes-reflector/releases) GitHub page) contains the deployment manifest (`reflector.yaml`).
 
 ```shellsession
 $ kubectl -n kube-system apply -f https://github.com/emberstack/kubernetes-reflector/releases/latest/download/reflector.yaml
@@ -139,7 +93,7 @@ $ kubectl -n kube-system apply -f https://github.com/emberstack/kubernetes-refle
 
   - Add `reflector.v1.k8s.emberstack.com/reflects: "<source namespace>/<source name>"` to the mirror object. The value of the annotation is the full name of the source object in `namespace/name` format.
 
-  > Note: Add `reflector.v1.k8s.emberstack.com/reflected-version: ""` to the resource annotations when doing any manual changes to the mirror (for example when deploying with `helm` or re-applying the deployment script). This will reset the reflected version of the mirror.
+  > Note: Add `reflector.v1.k8s.emberstack.com/reflected-version: ""` to the resource annotations when doing any manual changes to the mirror (for example when re-applying the deployment manifest). This will reset the reflected version of the mirror.
   
   Example mirror secret:
    ```yaml

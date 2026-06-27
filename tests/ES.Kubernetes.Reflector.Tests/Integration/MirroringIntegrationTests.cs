@@ -386,6 +386,55 @@ public class MirroringIntegrationTests(
     }
 
 
+    [Fact]
+    public async Task AutoReflect_DoesNotDelete_ForeignCopyWithMismatchedName()
+    {
+        var client = await GetKubernetesClient();
+
+        var foreignNamespace = $"foreign-{Guid.CreateVersion7()}";
+        await CreateNamespaceAsync(foreignNamespace);
+
+        // Source permits auto-reflection only to "allowed-*" namespaces (never the foreign ns).
+        var sourceResource = await CreateResource(client,
+            annotations: new ReflectorAnnotationsBuilder()
+                .WithReflectionAllowed(true)
+                .WithAllowedNamespaces("^allowed-.*")
+                .WithAutoEnabled(true).Build());
+
+        // Simulate another controller (e.g. Cilium secret-sync) copying a reflection verbatim
+        // into a namespace reflector does not manage. The copy carries reflector annotations
+        // but uses a DIFFERENT name than the source. Reflector must not delete it, otherwise it
+        // would fight the owning controller in a delete/recreate hot loop.
+        var foreignName = $"copied-{sourceResource.Name()}";
+        var foreignSecret = new V1Secret
+        {
+            ApiVersion = V1Secret.KubeApiVersion,
+            Kind = V1Secret.KubeKind,
+            Metadata = new V1ObjectMeta
+            {
+                Name = foreignName,
+                NamespaceProperty = foreignNamespace,
+                Annotations = new Dictionary<string, string>
+                {
+                    [ES.Kubernetes.Reflector.Mirroring.Core.Annotations.Reflection.MetaAutoReflects] = "True",
+                    [ES.Kubernetes.Reflector.Mirroring.Core.Annotations.Reflection.Reflects] =
+                        $"{sourceResource.Namespace()}/{sourceResource.Name()}"
+                }
+            },
+            StringData = new Dictionary<string, string> { ["key"] = "value" },
+            Type = "Opaque"
+        };
+        await client.CoreV1.CreateNamespacedSecretAsync(foreignSecret, foreignNamespace,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Give reflector time to (incorrectly) react and delete the foreign-owned copy.
+        await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+
+        Assert.True(await ResourceExists(client, foreignName, foreignNamespace,
+            TestContext.Current.CancellationToken));
+    }
+
+
     private async Task<V1Secret> CreateResource(IKubernetes client,
         string? name = null, string? namespaceName = null,
         Dictionary<string, string>? annotations = null,

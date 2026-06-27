@@ -263,11 +263,11 @@ public class MetadataFilterTests
         {
             ["app.kubernetes.io/name"] = "myapp",
             ["app.kubernetes.io/instance"] = "prod",
-            ["helm.sh/chart"] = "myapp-1.0"
+            ["example.com/chart"] = "myapp-1.0"
         };
         var result = MetadataFilter.Filter(labels, @"app\.kubernetes\.io/.*");
         Assert.Equal(2, result.Count);
-        Assert.False(result.ContainsKey("helm.sh/chart"));
+        Assert.False(result.ContainsKey("example.com/chart"));
     }
 
     [Fact]
